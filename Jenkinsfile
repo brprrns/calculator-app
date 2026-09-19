@@ -1,27 +1,23 @@
 pipeline {
-    agent {
-        dockerfile {
-            filename 'Dockerfile'
-            args '-u root'
-        }
-    }
+    agent any
 
     triggers { githubPush() }
 
     options {
         timestamps()
         disableConcurrentBuilds()
-        timeout(time: 20, unit: 'MINUTES')
+        timeout(time: 25, unit: 'MINUTES')
     }
 
     stages {
-        stage('CI - Unit tests') {
-            steps { sh 'pytest -v --junitxml=test-results.xml' }
-            post { always { junit 'test-results.xml' } }
+        stage('Build Docker agent image') {
+            steps { bat 'docker build -t calc-ci .' }
         }
-
+        stage('CI - Unit tests') {
+            steps { bat 'docker run --rm -v "%WORKSPACE%:/app" -w /app calc-ci python -m pytest -v' }
+        }
         stage('CI - Build package') {
-            steps { sh 'sam build' }
+            steps { bat 'docker run --rm -v "%WORKSPACE%:/app" -w /app calc-ci sam build' }
         }
     }
 
