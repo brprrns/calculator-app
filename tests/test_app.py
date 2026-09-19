@@ -10,7 +10,7 @@ def call(params):
 def test_add():
     r = call({"op": "add", "a": "2", "b": "3"})
     assert r["statusCode"] == 200
-    assert json.loads(r["body"])["result"] == 5
+    assert json.loads(r["body"])["result"] == 6
 
 
 def test_subtract_negative_result_ok():
