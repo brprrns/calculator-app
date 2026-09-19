@@ -38,5 +38,6 @@ def lambda_handler(event, context):
     except ValueError as exc:
         return _response(400, {"error": str(exc)})
     result = OPERATIONS[op](a, b)
-    return _response(200, {"operation": op, "a": a, "b": b, "result": result})
+    return _response(200, {"operation": op, "a": a, "b": b, "result": result, "version": "v2"})
 # webhook test
+
