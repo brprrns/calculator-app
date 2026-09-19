@@ -1,0 +1,28 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Simple calculator API (add, subtract, multiply)
+
+Globals:
+  Function:
+    Timeout: 10
+
+Resources:
+  CalculatorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      MemorySize: 128
+      Architectures: [x86_64]
+      Events:
+        Calculate:
+          Type: Api
+          Properties:
+            Path: /calculate
+            Method: get
+
+Outputs:
+  ApiUrl:
+    Description: Calculator API endpoint
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/calculate"
