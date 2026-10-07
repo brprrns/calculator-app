@@ -1,55 +1,90 @@
-pipeline {
-    agent any
+// CI/CD pipeline for the calculator project.
+//
+// Everything runs inside a Docker container built from the Dockerfile in this
+// repo, so each build gets the same Python + SAM CLI no matter what is
+// installed on the Jenkins machine.
+//
+// Needs in Jenkins:
+//   - Docker Pipeline plugin
+//   - a credential called "aws-creds" (Username with password:
+//     username = AWS access key id, password = AWS secret access key)
 
-    triggers { githubPush() }
+pipeline {
+    agent {
+        dockerfile {
+            filename 'Dockerfile'
+            args '-u root'
+        }
+    }
+
+    triggers {
+        githubPush()
+    }
 
     options {
-        timestamps()
         disableConcurrentBuilds()
-        timeout(time: 30, unit: 'MINUTES')
     }
 
     environment {
         AWS_DEFAULT_REGION = 'ap-south-1'
-        STACK_NAME         = 'calculator-app'
+        STACK_NAME         = 'calculator-stack'
+        SAM_CLI_TELEMETRY  = '0'
     }
 
     stages {
-        stage('Build Docker agent image') {
-            steps { bat 'docker build -t calc-ci .' }
-        }
-        stage('CI - Unit tests') {
-            steps { bat 'docker run --rm -v "%WORKSPACE%:/app" -w /app calc-ci python -m pytest -v' }
-        }
-        stage('CI - Build package') {
-            steps { bat 'docker run --rm -v "%WORKSPACE%:/app" -w /app calc-ci sam build' }
-        }
-        stage('CD - Deploy to AWS') {
-            when { expression { env.GIT_BRANCH == 'origin/main' } }
+        // ---------- CI ----------
+        stage('Unit tests') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    bat 'docker run --rm -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION -v "%WORKSPACE%:/app" -w /app calc-ci sam deploy --stack-name %STACK_NAME% --region %AWS_DEFAULT_REGION% --resolve-s3 --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset'
-                }
+                sh 'python -m pytest -v'
             }
         }
-        stage('Smoke test') {
-            when { expression { env.GIT_BRANCH == 'origin/main' } }
+
+        stage('Build package') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    bat 'docker run --rm -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION -v "%WORKSPACE%:/app" -w /app calc-ci python smoke_test.py'
+                sh 'python -m build'
+                archiveArtifacts artifacts: 'dist/*', fingerprint: true
+            }
+        }
+
+        stage('SAM build') {
+            steps {
+                sh 'sam build'
+            }
+        }
+
+        // ---------- CD ----------
+        stage('Deploy to AWS') {
+            // only deploy what lands on main, other branches just get tested
+            when {
+                expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
+            }
+            steps {
+                withCredentials([usernamePassword(
+                        credentialsId: 'aws-creds',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh '''
+                        sam deploy \
+                          --stack-name $STACK_NAME \
+                          --resolve-s3 \
+                          --capabilities CAPABILITY_IAM \
+                          --no-confirm-changeset \
+                          --no-fail-on-empty-changeset
+
+                        echo "---- Stack outputs ----"
+                        sam list stack-outputs --stack-name $STACK_NAME
+                    '''
                 }
             }
         }
     }
 
     post {
-        success { echo 'Pipeline succeeded: tested, built and deployed' }
-        failure { echo 'Pipeline failed, check the stage logs above' }
+        success {
+            echo 'Pipeline finished OK.'
+        }
+        failure {
+            echo 'Pipeline failed - check the stage that went red above.'
+        }
     }
 }

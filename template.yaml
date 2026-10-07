@@ -1,28 +1,38 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Simple calculator API (add, subtract, multiply)
+Description: Calculator API - add, subtract and multiply two positive integers
 
 Globals:
   Function:
+    Runtime: python3.12
     Timeout: 10
+    MemorySize: 128
 
 Resources:
   CalculatorFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Description: Does add / subtract / multiply on two positive integers
       CodeUri: src/
-      Handler: app.lambda_handler
-      Runtime: python3.12
-      MemorySize: 128
-      Architectures: [x86_64]
+      Handler: calculator.handler.lambda_handler
+      Architectures:
+        - x86_64
       Events:
-        Calculate:
+        CalculateGet:
           Type: Api
           Properties:
             Path: /calculate
             Method: get
+        CalculatePost:
+          Type: Api
+          Properties:
+            Path: /calculate
+            Method: post
 
 Outputs:
-  ApiUrl:
-    Description: Calculator API endpoint
+  CalculatorApiUrl:
+    Description: Base URL of the calculator endpoint
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/calculate"
+  CalculatorFunctionName:
+    Description: Lambda function name
+    Value: !Ref CalculatorFunction

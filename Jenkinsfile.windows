@@ -1,0 +1,77 @@
+// Fallback pipeline for a Jenkins that runs directly on Windows.
+//
+// The "agent { dockerfile }" version (Jenkinsfile) sometimes breaks on a
+// Windows host because the Docker Pipeline plugin passes C:\ paths into a
+// Linux container. This one skips the plugin and just calls docker itself.
+// Same stages, same Docker image, same result.
+//
+// To use it: in the Jenkins job set "Script Path" to Jenkinsfile.windows
+
+pipeline {
+    agent any
+
+    triggers {
+        githubPush()
+    }
+
+    options {
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        IMAGE              = 'calculator-ci'
+        AWS_DEFAULT_REGION = 'ap-south-1'
+        STACK_NAME         = 'calculator-stack'
+        SAM_CLI_TELEMETRY  = '0'
+    }
+
+    stages {
+        stage('Build CI image') {
+            steps {
+                bat 'docker build -t %IMAGE% .'
+            }
+        }
+
+        stage('Unit tests') {
+            steps {
+                bat 'docker run --rm -v "%WORKSPACE%:/app" %IMAGE% python -m pytest -v'
+            }
+        }
+
+        stage('Build package') {
+            steps {
+                bat 'docker run --rm -v "%WORKSPACE%:/app" %IMAGE% python -m build'
+                archiveArtifacts artifacts: 'dist/*', fingerprint: true
+            }
+        }
+
+        stage('SAM build') {
+            steps {
+                bat 'docker run --rm -v "%WORKSPACE%:/app" %IMAGE% sam build'
+            }
+        }
+
+        stage('Deploy to AWS') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
+            }
+            steps {
+                withCredentials([usernamePassword(
+                        credentialsId: 'aws-creds',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    bat 'docker run --rm -v "%WORKSPACE%:/app" -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION -e SAM_CLI_TELEMETRY %IMAGE% sh -c "sam deploy --stack-name %STACK_NAME% --resolve-s3 --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset && sam list stack-outputs --stack-name %STACK_NAME%"'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline finished OK.'
+        }
+        failure {
+            echo 'Pipeline failed - check the stage that went red above.'
+        }
+    }
+}

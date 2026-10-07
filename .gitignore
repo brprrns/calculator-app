@@ -5,3 +5,6 @@ __pycache__/
 *.pyc
 test-results.xml
 samconfig.toml
+build/
+dist/
+*.egg-info/
