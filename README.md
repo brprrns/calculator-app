@@ -29,14 +29,3 @@ python -m pytest
 ```
 python -m build
 ```
-
-## Use the deployed API
-
-```
-curl "https://<api-id>.execute-api.<region>.amazonaws.com/Prod/calculate?operation=add&a=10&b=5"
-```
-
-Operations: `add`, `subtract`, `multiply`. Both numbers must be positive integers,
-otherwise the API answers with HTTP 400 and an error message.
-
-See `docs/RUNBOOK.md` for the full setup.
